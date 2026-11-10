@@ -9,13 +9,12 @@ permissions:
   contents: read
 
 jobs:
-  # Read VERSION once and expose it to every downstream job
   version:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     outputs:
       version: ${{ steps.read.outputs.version }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v4
       - id: read
         run: |
           version="$(tr -d '[:space:]' < VERSION)"
@@ -25,22 +24,20 @@ jobs:
           fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
-  # Cross-compiled binaries (raw executables, not packages)
   cross:
     needs: version
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v4
       - run: ./build-on-linux.sh cross
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@v4
         with:
           name: cross-binaries
           path: dist/
 
-  # Arch Linux x86_64 package, built natively in an Arch container
   package-arch-x86_64:
     needs: version
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     container: archlinux/archlinux:base-devel
     steps:
       - name: Install build dependencies
@@ -54,7 +51,7 @@ jobs:
           echo 'builder ALL=(ALL) NOPASSWD: ALL' >> /etc/sudoers
           chown -R builder:builder .
 
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v4
         with:
           path: src
 
@@ -63,31 +60,29 @@ jobs:
           chown -R builder:builder src
           su builder -c 'cd src/packaging/archlinux-local && makepkg -s --noconfirm'
 
-      - uses: actions/upload-artifact@v7
+      - name: Normalize package filename
+        run: |
+          mkdir -p dist
+          mv src/packaging/archlinux-local/*.pkg.tar.zst "dist/gitlulz-local-x86_64.pkg.tar.zst"
+
+      - uses: actions/upload-artifact@v4
         with:
           name: archlinux-x86_64
-          path: src/packaging/archlinux-local/*.pkg.tar.zst
+          path: dist/gitlulz-local-x86_64.pkg.tar.zst
 
-  # Arch Linux aarch64 package, built under QEMU emulation
   package-arch-aarch64:
     needs: version
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04-arm
     steps:
-      - name: Set up QEMU for aarch64
-        uses: docker/setup-qemu-action@v4
-        with:
-          platforms: arm64
+      - uses: actions/checkout@v4
 
-      - uses: actions/checkout@v7
-
-      - name: Build package in Arch Linux ARM container
+      - name: Build package in native Arch Linux ARM container
         run: |
           docker run --rm \
-            --user root \
-            --entrypoint bash \
+            --platform linux/arm64 \
             -v "$PWD":/build \
-            stephank/archlinux:aarch64-makepkg \
-            -c '
+            menci/archlinuxarm:base-devel \
+            bash -c '
               set -e
               pacman -Syu --noconfirm
               pacman -S --noconfirm git go sudo
@@ -97,24 +92,28 @@ jobs:
               su builder -c "cd /build/packaging/archlinux-local && makepkg -s --noconfirm"
             '
 
-      - uses: actions/upload-artifact@v7
+      - name: Normalize package filename
+        run: |
+          mkdir -p dist
+          mv packaging/archlinux-local/*.pkg.tar.zst "dist/gitlulz-local-aarch64.pkg.tar.zst"
+
+      - uses: actions/upload-artifact@v4
         with:
           name: archlinux-aarch64
-          path: packaging/archlinux-local/*.pkg.tar.zst
+          path: dist/gitlulz-local-aarch64.pkg.tar.zst
 
-  # Create the GitHub Release and attach every artifact
   release:
     needs: [version, cross, package-arch-x86_64, package-arch-aarch64]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
-      contents: write # required by softprops/action-gh-release
+      contents: write
     steps:
-      - uses: actions/download-artifact@v8
+      - uses: actions/download-artifact@v4
         with:
           path: artifacts
           merge-multiple: true
 
-      - uses: softprops/action-gh-release@v3
+      - uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
           name: ${{ github.ref_name }}
