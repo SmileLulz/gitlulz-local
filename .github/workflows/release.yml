@@ -58,12 +58,18 @@ jobs:
       - name: Build package
         run: |
           chown -R builder:builder src
-          su builder -c 'cd src/packaging/archlinux-local && makepkg -s --noconfirm'
+          su builder -c 'cd src/packaging/archlinux-local && PKGEXT=.pkg.tar.zst makepkg -s --noconfirm'
 
       - name: Normalize package filename
         run: |
           mkdir -p dist
-          mv src/packaging/archlinux-local/*.pkg.tar.zst "dist/gitlulz-local-x86_64.pkg.tar.zst"
+          pkg="$(find src/packaging/archlinux-local -maxdepth 1 -name '*.pkg.tar.*' ! -name '*-debug-*' -print -quit)"
+          if [ -z "$pkg" ]; then
+            echo "no non-debug package found in src/packaging/archlinux-local" >&2
+            find src/packaging/archlinux-local -maxdepth 1 -type f -ls >&2
+            exit 1
+          fi
+          mv "$pkg" "dist/gitlulz-local-x86_64.pkg.tar.zst"
 
       - uses: actions/upload-artifact@v7
         with:
@@ -90,17 +96,14 @@ jobs:
 
               # Disable pacman sandbox syscalls that containers may not grant
               sed -i -e "s/^#DisableSandboxSyscalls/DisableSandboxSyscalls/" \
-                      -e "s/^#DisableSandboxFilesystem/DisableSandboxFilesystem/" \
-                      /etc/pacman.conf
+                     -e "s/^#DisableSandboxFilesystem/DisableSandboxFilesystem/" \
+                     /etc/pacman.conf
 
               pacman -Syu --noconfirm --needed
               pacman -S --noconfirm --needed git go sudo
 
-              # Create a group named "builder" with the host GID
-              # (fall back silently if the GID is already taken)
+              # Create builder group/user matching the host UID/GID
               groupadd -g "$HOST_GID" builder 2>/dev/null || true
-
-              # Create the builder user with the host UID and the "builder" group
               useradd -m -u "$HOST_UID" -g builder builder
               echo "builder ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
 
@@ -108,10 +111,10 @@ jobs:
               chown -R builder:builder /build
               chmod -R a+w /build
 
-              # Run makepkg as builder, capturing and printing its output
+              # Force a consistent package extension regardless of image default
               su builder -c "
                 cd /build/packaging/archlinux-local
-                makepkg -s --noconfirm 2>&1 | tee /tmp/makepkg.log
+                PKGEXT=.pkg.tar.zst makepkg -s --noconfirm 2>&1 | tee /tmp/makepkg.log
               " || {
                 echo "=== makepkg failed; full log follows ===" >&2
                 cat /tmp/makepkg.log >&2
@@ -129,7 +132,7 @@ jobs:
       - name: Normalize package filename
         run: |
           mkdir -p dist
-          pkg="$(find packaging/archlinux-local -maxdepth 1 -name '*.pkg.tar.zst' ! -name '*-debug-*' -print -quit)"
+          pkg="$(find packaging/archlinux-local -maxdepth 1 -name '*.pkg.tar.*' ! -name '*-debug-*' -print -quit)"
           if [ -z "$pkg" ]; then
             echo "no non-debug package found in packaging/archlinux-local" >&2
             find packaging/archlinux-local -maxdepth 1 -type f -ls >&2
