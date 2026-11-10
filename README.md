@@ -1,6 +1,13 @@
 # gitlulz-local
 
-A small CLI that makes **hosting a local Git remote** and **backing it up safely** easy. It has no runtime dependencies beyond `git` itself: every command shells out to `git`.
+A simple and small CLI that makes **hosting a local Git remote** and **backing it up safely** easy. It has no runtime dependencies beyond `git` itself: every command shells out to `git`.
+
+<br>
+
+> [!IMPORTANT]
+> I built this project for my personal usecase. And I'm not accepting any contribution for now. Please fork it if you want to add/modify something. _(This project is under [GNU General Public License v3.0 only](https://github.com/SmileLulz/gitlulz-local/blob/main/LICENSE) license)._
+
+<br>
 
 ## Build and Install
 
