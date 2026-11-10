@@ -87,15 +87,36 @@ jobs:
             menci/archlinuxarm:base-devel \
             bash -c '
               set -e
-              pacman -Syu --noconfirm --disable-sandbox
-              pacman -S --noconfirm --disable-sandbox git go sudo
-              useradd -m -u "$HOST_UID" builder
+
+              sed -i -e "s/^#DisableSandboxSyscalls/DisableSandboxSyscalls/" \
+                      -e "s/^#DisableSandboxFilesystem/DisableSandboxFilesystem/" \
+                      /etc/pacman.conf
+
+              pacman -Syu --noconfirm --needed
+              pacman -S --noconfirm --needed git go sudo
+
+              # Create builder user with host UID and a matching primary group
+              groupadd -g "$HOST_GID" builder-group 2>/dev/null || true
+              useradd -m -u "$HOST_UID" -g "$HOST_GID" builder
               echo "builder ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
+
+              # Give the builder user full access to the workspace
               chown -R builder:builder /build
-              su builder -c "cd /build/packaging/archlinux-local && makepkg -s --noconfirm" || {
-                echo "makepkg exited non-zero" >&2
+              chmod -R a+w /build
+
+              # Run makepkg as builder, capturing and printing its output
+              su builder -c "
+                cd /build/packaging/archlinux-local
+                makepkg -s --noconfirm 2>&1 | tee /tmp/makepkg.log
+              " || {
+                echo "=== makepkg failed; full log follows ===" >&2
+                cat /tmp/makepkg.log >&2
                 exit 1
               }
+
+              # Show what was produced (for debugging)
+              echo "=== files after makepkg ===" >&2
+              find /build/packaging/archlinux-local -maxdepth 1 -name "*.pkg.tar.*" -ls >&2
             '
 
       - name: Reclaim workspace ownership
@@ -107,6 +128,8 @@ jobs:
           pkg="$(find packaging/archlinux-local -maxdepth 1 -name '*.pkg.tar.zst' ! -name '*-debug-*' -print -quit)"
           if [ -z "$pkg" ]; then
             echo "no non-debug package found in packaging/archlinux-local" >&2
+            # List everything that *was* produced, to help diagnose
+            find packaging/archlinux-local -maxdepth 1 -type f -ls >&2
             exit 1
           fi
           mv "$pkg" "dist/gitlulz-local-aarch64.pkg.tar.zst"
