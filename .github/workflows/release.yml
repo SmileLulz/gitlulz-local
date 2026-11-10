@@ -82,21 +82,20 @@ jobs:
           docker run --rm \
             --platform linux/arm64 \
             -v "$PWD":/build \
+            -e HOST_UID="$(id -u)" \
+            -e HOST_GID="$(id -g)" \
             menci/archlinuxarm:base-devel \
             bash -c '
               set -e
               pacman -Syu --noconfirm --disable-sandbox
               pacman -S --noconfirm --disable-sandbox git go sudo
-              grep -q "^DisableSandbox" /etc/pacman.conf || echo "DisableSandbox" >> /etc/pacman.conf
-              useradd -m builder
+              useradd -m -u "$HOST_UID" builder
               echo "builder ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
               chown -R builder:builder /build
               su builder -c "cd /build/packaging/archlinux-local && makepkg -s --noconfirm" || {
                 echo "makepkg exited non-zero" >&2
                 exit 1
               }
-              echo "=== files after makepkg ===" >&2
-              find /build/packaging/archlinux-local -maxdepth 1 -name "*.pkg.tar.*" -ls >&2
             '
 
       - name: Reclaim workspace ownership
