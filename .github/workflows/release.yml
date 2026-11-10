@@ -76,8 +76,9 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - name: Build package in native Arch Linux ARM container
+      - name: Build package
         run: |
+          mkdir -p dist
           docker run --rm \
             --platform linux/arm64 \
             -v "$PWD":/build \
@@ -86,10 +87,16 @@ jobs:
               set -e
               pacman -Syu --noconfirm --disable-sandbox
               pacman -S --noconfirm --disable-sandbox git go sudo
+              grep -q "^DisableSandbox" /etc/pacman.conf || echo "DisableSandbox" >> /etc/pacman.conf
               useradd -m builder
               echo "builder ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
               chown -R builder:builder /build
-              su builder -c "cd /build/packaging/archlinux-local && makepkg -s --noconfirm"
+              su builder -c "cd /build/packaging/archlinux-local && makepkg -s --noconfirm" || {
+                echo "makepkg exited non-zero" >&2
+                exit 1
+              }
+              echo "=== files after makepkg ===" >&2
+              find /build/packaging/archlinux-local -maxdepth 1 -name "*.pkg.tar.*" -ls >&2
             '
 
       - name: Reclaim workspace ownership
