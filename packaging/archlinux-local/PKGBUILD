@@ -1,59 +1,52 @@
 # Maintainer: SmileLulz <SmileLulz@users.noreply.github.com>
-# Git-based PKGBUILD: builds a specific commit from the Git remote
+# Local PKGBUILD: builds from the current project working tree
 
 _pkgbuild_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
 _project_root="$(realpath "$_pkgbuild_dir/../..")"
 
-_git_url="$(git -C "$_project_root" remote get-url origin)" || {
-    printf 'Error: Could not determine the Git origin URL.\n' >&2
-    exit 1
-}
-_git_commit="$(git -C "$_project_root" rev-parse HEAD)" || {
-    printf 'Error: Could not determine the current Git commit.\n' >&2
-    exit 1
-}
-
-case "$_git_url" in
-    git@github.com:*)           _git_url="https://github.com/${_git_url#git@github.com:}" ;;
-    ssh://git@github.com/*)     _git_url="https://github.com/${_git_url#ssh://git@github.com/}" ;;
-esac
-
 pkgname=gitlulz-local
-pkgver=0.0.0
+pkgver="$(tr -d '[:space:]' < "$_project_root/VERSION" 2>/dev/null || true)"
+pkgver="${pkgver//-/.}"
+pkgver="${pkgver//+/.}"
 pkgrel=1
 
 pkgdesc="Polished local Git hosting: remote setup and verified backups"
-url="${_git_url%.git}"
-url="${url#git+}"
+url="https://github.com/SmileLulz/gitlulz-local"
 arch=('x86_64' 'aarch64' 'armv7h' 'riscv64')
 options=(!lto)
 license=('MIT')
 depends=('git')
 makedepends=('go' 'git')
 
-source=("gitlulz-local::git+${_git_url}#commit=${_git_commit}")
-sha256sums=('SKIP')
-
-pkgver() {
-    cd "$srcdir/gitlulz-local"
-    if git describe --tags --dirty >/dev/null 2>&1; then
-        git describe --tags --dirty | sed -e 's/^v//' -e 's/-/./g'
-    else
-        printf '0.0.0.r%s.g%s\n' \
-            "$(git rev-list --count HEAD)" \
-            "$(git rev-parse --short=7 HEAD)"
-    fi
-}
+source=()
+sha256sums=()
 
 prepare() {
-    cd "$srcdir/gitlulz-local"
+    local build_root="$srcdir/$pkgname"
+    local item
+
+    if [[ ! -f "$_project_root/go.mod" ]]; then
+        printf 'Error: go.mod not found in %s\n' "$_project_root" >&2
+        return 1
+    fi
+
+    rm -rf -- "$build_root"
+    mkdir -p "$build_root"
+
+    for item in VERSION go.mod go.sum src README.md LICENSE; do
+        if [[ -e "$_project_root/$item" ]]; then
+            cp -a "$_project_root/$item" "$build_root/"
+        fi
+    done
+
+    cd "$build_root"
     export GOTOOLCHAIN=local
     [[ -f go.sum ]] || go mod tidy
     go mod download
 }
 
 build() {
-    cd "$srcdir/gitlulz-local"
+    cd "$srcdir/$pkgname"
     export GOTOOLCHAIN=local
     export CGO_ENABLED=0
 
@@ -66,14 +59,14 @@ build() {
 }
 
 check() {
-    cd "$srcdir/gitlulz-local"
+    cd "$srcdir/$pkgname"
     export GOTOOLCHAIN=local
     export CGO_ENABLED=0
     go test ./...
 }
 
 package() {
-    cd "$srcdir/gitlulz-local"
+    cd "$srcdir/$pkgname"
     install -Dm755 gitlulz-local "$pkgdir/usr/bin/gitlulz-local"
     if compgen -G "dist/man/*.1" >/dev/null; then
         install -Dm644 -t "$pkgdir/usr/share/man/man1" dist/man/*.1

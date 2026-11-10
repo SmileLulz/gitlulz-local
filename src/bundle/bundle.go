@@ -91,8 +91,20 @@ func CreateFull(repoPath, outputDir, prefix, toolVersion string) (*Manifest, str
 	tmp.Close()
 	defer os.Remove(tmpPath)
 
-	if _, err := gitops.Run(repoPath, "bundle", "create", tmpPath, "--all", "HEAD"); err != nil {
+	bundleArgs := []string{"bundle", "create", tmpPath, "--all"}
+	headResolves := false
+	if _, err := gitops.Run(repoPath, "rev-parse", "--verify", "--quiet", "HEAD"); err == nil {
+		headResolves = true
+		bundleArgs = append(bundleArgs, "HEAD")
+	}
+	if _, err := gitops.Run(repoPath, bundleArgs...); err != nil {
 		return nil, "", "", err
+	}
+	if !headResolves {
+		fmt.Fprintf(os.Stderr,
+			"warning: HEAD in %s is dangling; bundle has no default branch. "+
+				"Fix with: git -C %s symbolic-ref HEAD refs/heads/<branch>\n",
+			repoPath, repoPath)
 	}
 	if _, err := gitops.Run(repoPath, "bundle", "verify", tmpPath); err != nil {
 		return nil, "", "", fmt.Errorf("bundle verification failed: %w", err)

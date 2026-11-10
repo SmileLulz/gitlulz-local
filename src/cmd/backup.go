@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/SmileLulz/gitlulz-local/src/bundle"
 	"github.com/SmileLulz/gitlulz-local/src/gitops"
@@ -35,14 +36,19 @@ manifest alongside it. Bundles are read-only archives; restore with
 			if !gitops.IsBare(src) {
 				return fmt.Errorf("not a bare repository: %s", src)
 			}
+			base := strings.TrimSuffix(filepath.Base(src), ".git")
+			if base == "" {
+				base = filepath.Base(src)
+			}
+
 			if outputDir == "" {
-				outputDir = filepath.Join(filepath.Dir(src), filepath.Base(src)+".backups")
+				outputDir = filepath.Join(filepath.Dir(src), base+".backups")
 			}
 			if err := os.MkdirAll(outputDir, 0o755); err != nil {
 				return err
 			}
 			if prefix == "" {
-				prefix = filepath.Base(src)
+				prefix = base
 			}
 			m, bundlePath, manifestPath, err := bundle.CreateFull(src, outputDir, prefix, Version)
 			if err != nil {

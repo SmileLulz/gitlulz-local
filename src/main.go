@@ -6,8 +6,7 @@ import (
 	"github.com/SmileLulz/gitlulz-local/src/cmd"
 )
 
-// version is overridden at build time via -ldflags "-X main.version=..."
-var version = "0.1.0-dev"
+var version = "dev" // fallback version
 
 func main() {
 	cmd.Version = version

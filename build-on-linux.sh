@@ -21,14 +21,24 @@ Examples:
   $(basename "$0") go
   $(basename "$0") test
   $(basename "$0") cross
-  $(basename "$0") arch-local
-  $(basename "$0") arch-local --nocheck
+  $(basename "$0") archlinux-local
+  $(basename "$0") archlinux-local --nocheck
 EOF
+}
+
+project_version() {
+    local f="$PWD/VERSION"
+    if [[ -f "$f" ]]; then
+        tr -d '[:space:]' < "$f"
+    else
+        echo "dev"
+    fi
 }
 
 run_go() {
     CGO_ENABLED=0 exec go build \
-        -trimpath -buildvcs=false -ldflags="-s -w" \
+        -trimpath -buildvcs=false \
+        -ldflags="-s -w -X main.version=$(project_version)" \
         -o gitlulz-local ./src "$@"
 }
 
@@ -52,7 +62,8 @@ run_cross() {
         [[ "$arch" == "arm" ]] && envs+=("GOARM=7")
         echo "building $os/$arch -> $out"
         env "${envs[@]}" go build \
-            -trimpath -buildvcs=false -ldflags="-s -w" \
+            -trimpath -buildvcs=false \
+            -ldflags="-s -w -X main.version=$(project_version)" \
             -o "$out" ./src
     done
 }
@@ -81,8 +92,8 @@ fi
 
 case "$1" in
     -h|--help) usage; exit 0 ;;
-    go)   shift; run_go "$@" ;;
-    test) shift; run_test "$@" ;;
+    go)    shift; run_go "$@" ;;
+    test)  shift; run_test "$@" ;;
     cross) shift; run_cross "$@" ;;
-    *)    run_makepkg "$@" ;;
+    *)     run_makepkg "$@" ;;
 esac
