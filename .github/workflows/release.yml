@@ -88,6 +88,7 @@ jobs:
             bash -c '
               set -e
 
+              # Disable pacman sandbox syscalls that containers may not grant
               sed -i -e "s/^#DisableSandboxSyscalls/DisableSandboxSyscalls/" \
                       -e "s/^#DisableSandboxFilesystem/DisableSandboxFilesystem/" \
                       /etc/pacman.conf
@@ -95,9 +96,12 @@ jobs:
               pacman -Syu --noconfirm --needed
               pacman -S --noconfirm --needed git go sudo
 
-              # Create builder user with host UID and a matching primary group
-              groupadd -g "$HOST_GID" builder-group 2>/dev/null || true
-              useradd -m -u "$HOST_UID" -g "$HOST_GID" builder
+              # Create a group named "builder" with the host GID
+              # (fall back silently if the GID is already taken)
+              groupadd -g "$HOST_GID" builder 2>/dev/null || true
+
+              # Create the builder user with the host UID and the "builder" group
+              useradd -m -u "$HOST_UID" -g builder builder
               echo "builder ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
 
               # Give the builder user full access to the workspace
@@ -128,7 +132,6 @@ jobs:
           pkg="$(find packaging/archlinux-local -maxdepth 1 -name '*.pkg.tar.zst' ! -name '*-debug-*' -print -quit)"
           if [ -z "$pkg" ]; then
             echo "no non-debug package found in packaging/archlinux-local" >&2
-            # List everything that *was* produced, to help diagnose
             find packaging/archlinux-local -maxdepth 1 -type f -ls >&2
             exit 1
           fi
