@@ -1,4 +1,3 @@
-```markdown
 # gitlulz-local
 
 A simple and small CLI that makes **hosting a local Git remote** and **backing it up safely** easy. It has no runtime dependencies beyond `git` itself: every command shells out to `git`.
