@@ -6,13 +6,17 @@ usage() {
 Usage: $(basename "$0") <name|command> [extra args...]
 
 Built-in commands:
-  go            Run: go build -trimpath -buildvcs=false -ldflags="-s -w" -o gitlulz-local ./src [extra args...]
-  test          Run: go test ./... [extra args...]
-  cross [dir]   Cross-compile for common OS/arch targets into <dir> (default: dist)
+  go             Run: go build -trimpath -buildvcs=false -ldflags="-s -w" -o gitlulz-local ./src [extra args...]
+  test           Run: go test ./... [extra args...]
+  cross [dir]    Cross-compile all OS/arch targets into <dir> (default: dist)
+  linux [dir]    Cross-compile Linux targets only into <dir> (default: dist)
+  darwin [dir]   Cross-compile macOS targets only into <dir> (default: dist)
+  windows [dir]  Cross-compile Windows targets only into <dir> (default: dist)
+  termux [dir]   Cross-compile Termux (Android) targets only into <dir> (default: dist)
 
 Packaging targets (anything else):
-  <name>        Run: PKGDEST=\$PWD makepkg --dir packaging/<name> \\
-                       --syncdeps --cleanbuild --clean --install [extra args...]
+  <name>         Run: PKGDEST=\$PWD makepkg --dir packaging/<name> \\
+                        --syncdeps --cleanbuild --clean --install [extra args...]
 
 Packaging dirs found in ./packaging:
 $(find packaging -mindepth 1 -maxdepth 1 -type d -printf '  - %f\n' 2>/dev/null | sort)
@@ -21,6 +25,10 @@ Examples:
   $(basename "$0") go
   $(basename "$0") test
   $(basename "$0") cross
+  $(basename "$0") linux
+  $(basename "$0") darwin
+  $(basename "$0") windows
+  $(basename "$0") termux
   $(basename "$0") archlinux-local
   $(basename "$0") archlinux-local --nocheck
 EOF
@@ -46,15 +54,12 @@ run_test() {
     exec go test ./... "$@"
 }
 
-run_cross() {
-    local outdir="${1:-dist}"
+# Shared cross-compile helper. Args: <outdir> <os/arch>...
+build_targets() {
+    local outdir="$1"
+    shift
     mkdir -p "$outdir"
-    local targets=(
-        "linux/amd64"  "linux/arm64" "linux/arm" "linux/riscv64"
-        "darwin/amd64" "darwin/arm64"
-        "windows/amd64" "windows/arm64"
-    )
-    for t in "${targets[@]}"; do
+    for t in "$@"; do
         local os="${t%/*}" arch="${t#*/}"
         local out="$outdir/gitlulz-local-$os-$arch"
         [[ "$os" == "windows" ]] && out+=".exe"
@@ -66,6 +71,39 @@ run_cross() {
             -ldflags="-s -w -X main.version=$(project_version)" \
             -o "$out" ./src
     done
+}
+
+run_cross() {
+    local outdir="${1:-dist}"
+    build_targets "$outdir" \
+        "linux/amd64" "linux/arm64" "linux/arm" "linux/riscv64" \
+        "darwin/amd64" "darwin/arm64" \
+        "windows/amd64" "windows/arm64" \
+        "android/arm64"
+}
+
+run_linux() {
+    local outdir="${1:-dist}"
+    build_targets "$outdir" \
+        "linux/amd64" "linux/arm64" "linux/arm" "linux/riscv64"
+}
+
+run_darwin() {
+    local outdir="${1:-dist}"
+    build_targets "$outdir" \
+        "darwin/amd64" "darwin/arm64"
+}
+
+run_windows() {
+    local outdir="${1:-dist}"
+    build_targets "$outdir" \
+        "windows/amd64" "windows/arm64"
+}
+
+run_termux() {
+    local outdir="${1:-dist}"
+    build_targets "$outdir" \
+        "android/arm64"
 }
 
 run_makepkg() {
@@ -92,8 +130,12 @@ fi
 
 case "$1" in
     -h|--help) usage; exit 0 ;;
-    go)    shift; run_go "$@" ;;
-    test)  shift; run_test "$@" ;;
-    cross) shift; run_cross "$@" ;;
-    *)     run_makepkg "$@" ;;
+    go)      shift; run_go "$@" ;;
+    test)    shift; run_test "$@" ;;
+    cross)   shift; run_cross "$@" ;;
+    linux)   shift; run_linux "$@" ;;
+    darwin)  shift; run_darwin "$@" ;;
+    windows) shift; run_windows "$@" ;;
+    termux)  shift; run_termux "$@" ;;
+    *)       run_makepkg "$@" ;;
 esac

@@ -13,13 +13,19 @@ A simple and small CLI that makes **hosting a local Git remote** and **backing i
 
 ```bash
 ./build-on-linux.sh go              # static binary -> ./gitlulz-local
-./build-on-linux.sh cross           # cross-compile all targets -> ./dist
+./build-on-linux.sh cross           # cross-compile everything -> ./dist
+./build-on-linux.sh linux           # Linux targets only -> ./dist
+./build-on-linux.sh darwin          # macOS targets only -> ./dist
+./build-on-linux.sh windows         # Windows targets only -> ./dist
+./build-on-linux.sh termux          # Termux (Android) target -> ./dist
 ./build-on-linux.sh archlinux-local # build the Arch package from the work tree
 ```
 
-On macOS, use `./build-on-mac.sh`; on Windows, `build-on-windows.bat`. Both expose only `go`, `test`, and `cross` (`makepkg` is Arch Linux only).
+On macOS, use `./build-on-mac.sh`; on Windows, `build-on-windows.bat`. Both expose the same `go`, `test`, `cross`, `linux`, `darwin`, `windows`, and `termux` subcommands; only the Linux script has the `makepkg` fallback (`makepkg` is Arch Linux only).
 
-The version comes from the `VERSION` file at the project root. Bump that file to release; every build path (`go`, `cross`, and the PKGBUILD) reads it.
+All cross-compiled binaries land in `dist/` and follow the same `gitlulz-local-<os>-<arch>` naming, so a file produced by `cross` and the same file produced by `linux`/`darwin`/`windows`/`termux` are byte-identical. The Termux build targets `android/arm64` only: `android/arm` (32-bit Android) always requires cgo and is deliberately not built.
+
+The version comes from the `VERSION` file at the project root. Bump that file to release; every build path (`go`, `cross`, the per-OS commands, and the PKGBUILD) reads it.
 
 ## Commands
 
@@ -75,9 +81,12 @@ End-to-end smoke tests run in a temporary directory and clean up on exit:
 ./test-on-linux.sh
 ./test-on-mac.sh
 test-on-windows.bat
+./test-on-termux.sh
 ```
 
-Set `KEEP=1` to keep the temp directory for inspection. On Windows the `.bat` locates `bash.exe` from your Git for Windows install and runs the shared suite.
+Each script checks that every command it invokes is present **before** building or running anything, and reports all missing ones at once with a platform-appropriate install hint (`pacman`/`apt`/`dnf`/`zypper`/`apk` on Linux, `brew`/`port` on macOS, `pkg install` on Termux, and `bash.exe`/`git.exe`/`go.exe` lookups on Windows). So a bare machine fails with a single readable message instead of a half-finished run.
+
+Set `KEEP=1` to keep the temp directory for inspection. On Windows the `.bat` locates `bash.exe` from your Git for Windows install and runs the shared suite; `test-on-linux.sh` and `test-on-mac.sh` are otherwise identical apart from the install hints in the pre-check.
 
 ## Releases
 
@@ -92,6 +101,7 @@ Keep `VERSION` and the tag in sync; asset filenames come from `VERSION`. Local b
 
 ## Architecture Support
 
-- `./build-on-linux.sh cross` cross-compiles for: `linux/{amd64,arm64,arm,riscv64}`, `darwin/{amd64,arm64}`, `windows/{amd64,arm64}`.
+- `./build-on-linux.sh cross` cross-compiles for: `linux/{amd64,arm64,arm,riscv64}`, `darwin/{amd64,arm64}`, `windows/{amd64,arm64}`, `android/arm64` (Termux).
+- `android/arm` (32-bit Android) is intentionally not built: it always requires cgo linking, which the other targets do not use.
 - The PKGBUILD declares `arch=('x86_64' 'aarch64' 'armv7h' 'riscv64')`.
-- Binaries are built with `CGO_ENABLED=0` -> fully static on Linux.
+- Binaries are built with `CGO_ENABLED=0` -> fully static on Linux. The `android/arm64` build uses Go's direct Bionic dynamic imports and needs no C toolchain, so it builds on any host with Go installed.

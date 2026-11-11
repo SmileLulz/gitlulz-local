@@ -5,6 +5,48 @@
 # unless KEEP=1 is set.
 set -euo pipefail
 
+# ==== package checks ====
+
+pm_install_hint() {
+    if command -v brew >/dev/null 2>&1; then
+        printf '  brew install git go\n'
+    elif command -v port >/dev/null 2>&1; then
+        printf '  sudo port install git go\n'
+    else
+        printf '  Install Homebrew (https://brew.sh) then: brew install git go\n'
+        printf '  git also comes with Xcode Command Line Tools: xcode-select --install\n'
+    fi
+}
+
+missing=()
+for cmd in git go awk sed grep mktemp basename dirname mkdir chmod rm; do
+    if ! command -v "$cmd" >/dev/null 2>&1; then
+        missing+=("$cmd")
+    fi
+done
+if ! command -v sha256sum >/dev/null 2>&1 \
+   && ! command -v shasum >/dev/null 2>&1; then
+    missing+=("sha256sum (or shasum)")
+fi
+
+if [ ${#missing[@]} -gt 0 ]; then
+    {
+        echo "error: missing required command(s):"
+        for cmd in "${missing[@]}"; do
+            printf '  %s\n' "$cmd"
+        done
+        echo
+        echo "Install hint for macOS:"
+        pm_install_hint
+        echo
+        echo "This script is meant for macOS. On Linux use ./test-on-linux.sh;"
+        echo "on Termux use ./test-on-termux.sh; on Windows use test-on-windows.bat."
+    } >&2
+    exit 1
+fi
+
+# ==== run ====
+
 cd "$(dirname -- "${BASH_SOURCE[0]}")"
 
 ROOT="$(mktemp -d "${TMPDIR:-/tmp}/gitlulz-test.XXXXXX")"
@@ -18,7 +60,6 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# Isolate git and any tooling from the caller's real config.
 export HOME="$ROOT/home"
 mkdir -p "$HOME"
 export GIT_CONFIG_NOSYSTEM=1
@@ -86,8 +127,6 @@ seed_repo() {
     git -C "$work" push -q local main                    || return 1
     git -C "$work" push -q local --tags                  || return 1
 }
-
-# ==== tests ====
 
 test_version() {
     local out
@@ -265,8 +304,6 @@ test_end_to_end() {
     content="$(git -C "$restored" show main:file.txt 2>/dev/null || true)"
     assert_eq "e2e restored file content matches" "$content" "hello"
 }
-
-# ==== run ====
 
 run_test() {
     printf '== %s\n' "$1"

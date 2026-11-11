@@ -33,6 +33,23 @@ if not defined BASH (
     exit /b 1
 )
 
+rem Check for git.exe (bash found via 'where bash' may be from Cygwin etc.,
+rem where git.exe is not guaranteed).
+where git.exe >nul 2>&1
+if errorlevel 1 (
+    echo Error: git.exe not found on PATH. 1>&2
+    echo Install Git for Windows from https://git-scm.com/download/win 1>&2
+    exit /b 1
+)
+
+rem Check for go.exe (needed to compile the test binary).
+where go.exe >nul 2>&1
+if errorlevel 1 (
+    echo Error: go.exe not found on PATH. 1>&2
+    echo Install Go from https://go.dev/dl/ or run: winget install GoLang.Go 1>&2
+    exit /b 1
+)
+
 if not exist "%~dp0test-on-linux.sh" (
     echo Error: test-on-linux.sh not found next to this batch file. 1>&2
     exit /b 1

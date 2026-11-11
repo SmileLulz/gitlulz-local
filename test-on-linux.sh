@@ -4,6 +4,59 @@
 # unless KEEP=1 is set.
 set -euo pipefail
 
+# ==== package checks ====
+
+detect_pm() {
+    local pm
+    for pm in pacman apt dnf zypper apk; do
+        if command -v "$pm" >/dev/null 2>&1; then
+            printf '%s\n' "$pm"
+            return 0
+        fi
+    done
+    printf '\n'
+}
+
+pm_install_hint() {
+    case "$(detect_pm)" in
+        pacman) printf '  sudo pacman -S git go gawk\n' ;;
+        apt)    printf '  sudo apt install git golang gawk\n' ;;
+        dnf)    printf '  sudo dnf install git golang gawk\n' ;;
+        zypper) printf '  sudo zypper install git go gawk\n' ;;
+        apk)    printf '  sudo apk add git go gawk\n' ;;
+        *)      printf '  (install git, go, and coreutils/findutils for your distro)\n' ;;
+    esac
+}
+
+missing=()
+for cmd in git go awk sed grep mktemp basename dirname mkdir chmod rm; do
+    if ! command -v "$cmd" >/dev/null 2>&1; then
+        missing+=("$cmd")
+    fi
+done
+if ! command -v sha256sum >/dev/null 2>&1 \
+   && ! command -v shasum >/dev/null 2>&1; then
+    missing+=("sha256sum (or shasum)")
+fi
+
+if [ ${#missing[@]} -gt 0 ]; then
+    {
+        echo "error: missing required command(s):"
+        for cmd in "${missing[@]}"; do
+            printf '  %s\n' "$cmd"
+        done
+        echo
+        echo "Install hint for this distro:"
+        pm_install_hint
+        echo
+        echo "This script is meant for Linux. On macOS use ./test-on-mac.sh;"
+        echo "on Termux use ./test-on-termux.sh; on Windows use test-on-windows.bat."
+    } >&2
+    exit 1
+fi
+
+# ==== run ====
+
 cd "$(dirname -- "${BASH_SOURCE[0]}")"
 
 ROOT="$(mktemp -d "${TMPDIR:-/tmp}/gitlulz-test.XXXXXX")"
@@ -17,7 +70,6 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# Isolate git and any tooling from the caller's real config
 export HOME="$ROOT/home"
 mkdir -p "$HOME"
 export GIT_CONFIG_NOSYSTEM=1
@@ -73,8 +125,6 @@ sha256_of() {
     fi
 }
 
-# Build a tiny source repo with one commit and one tag at $1,
-# pushing to remote $2 on branch main.
 seed_repo() {
     local work="$1" remote="$2"
     mkdir -p "$work"
@@ -87,8 +137,6 @@ seed_repo() {
     git -C "$work" push -q local main                    || return 1
     git -C "$work" push -q local --tags                  || return 1
 }
-
-# ==== tests ====
 
 test_version() {
     local out
@@ -267,13 +315,9 @@ test_end_to_end() {
     assert_eq "e2e restored file content matches" "$content" "hello"
 }
 
-# ==== run ====
-
 run_test() {
     printf '== %s\n' "$1"
     shift
-    # Tests handle their own error reporting;
-    # disable -e so one failure doesn't abort the whole run.
     set +e
     "$@"
     set -e
