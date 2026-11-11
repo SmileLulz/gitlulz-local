@@ -5,7 +5,7 @@ A simple and small CLI that makes **hosting a local Git remote** and **backing i
 <br>
 
 > [!IMPORTANT]
-> I built this project for my personal usecase. And I'm not accepting any contribution for now. Please fork it if you want to add/modify something. _(This project is under [GNU General Public License v3.0 only](https://github.com/SmileLulz/gitlulz-local/blob/main/LICENSE) license)._
+> I built this project for my personal usecase. And I'm not accepting any contribution for now. Please fork it if you want to modify something. _(This project is under [GNU General Public License v3.0 only](https://github.com/SmileLulz/gitlulz-local/blob/main/LICENSE) license)._
 
 <br>
 
@@ -115,17 +115,6 @@ test-on-windows.bat
 Each script checks that every command it invokes is present **before** building or running anything, and reports all missing ones at once with a platform-appropriate install hint (`pacman`/`apt`/`dnf`/`zypper`/`apk` on Linux, `brew`/`port` on macOS, `pkg install` on Termux, and `bash.exe`/`git.exe`/`go.exe` lookups on Windows). So a bare machine fails with a single readable message instead of a half-finished run.
 
 Set `KEEP=1` to keep the temp directory for inspection. On Windows the `.bat` locates `bash.exe` from your Git for Windows install and runs the shared suite; `test-on-linux.sh` and `test-on-mac.sh` are otherwise identical apart from the install hints in the pre-check. Each script also isolates `HOME` and `XDG_CONFIG_HOME` inside the temp directory, so the config-pruning test exercises a throwaway `config.yaml` and never touches your real one.
-
-## Releases
-
-Pushing a `v*` tag triggers `.github/workflows/release.yml`, which builds the cross binaries plus the Arch packages for `x86_64` and `aarch64`, and attaches everything to a GitHub Release:
-
-```bash
-git tag v1.2.0
-git push origin v1.2.0
-```
-
-Keep `VERSION` and the tag in sync; asset filenames come from `VERSION`. Local build artifacts can be removed with `./clean.sh`.
 
 ## Architecture Support
 
