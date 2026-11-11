@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -39,7 +40,7 @@ type Ref struct {
 	OID  string `json:"oid"`
 }
 
-// HasRefs reports whether the repository has any refs.
+// HasRefs reports whether the repository has any refs
 func HasRefs(repoPath string) (bool, error) {
 	out, err := gitops.Run(repoPath, "show-ref")
 	if err != nil {
@@ -52,9 +53,9 @@ func HasRefs(repoPath string) (bool, error) {
 }
 
 // CreateFull creates a full bundle (--all HEAD) of repoPath into outputDir,
-// verifies it, and writes a manifest alongside. It returns the manifest, the
-// final bundle path (empty if the repository has no refs), and the manifest
-// path.
+// verifies it, and writes a manifest alongside. It returns the manifest,
+// the final bundle path (empty if the repository has no refs),
+// and the manifest path.
 func CreateFull(repoPath, outputDir, prefix, toolVersion string) (*Manifest, string, string, error) {
 	if !gitops.IsBare(repoPath) {
 		return nil, "", "", fmt.Errorf("%s is not a bare git repository", repoPath)
@@ -150,7 +151,83 @@ func CreateFull(repoPath, outputDir, prefix, toolVersion string) (*Manifest, str
 	return m, finalBundlePath, manifestPath, nil
 }
 
-// VerifyBundle verifies a bundle file and returns the refs it contains.
+// PruneOldBackups keeps the newest maxBackups manifests (with their bundles)
+// in outputDir that share the given prefix. maxBackups == 0 disables pruning.
+// Returns the list of bundle paths that were removed.
+func PruneOldBackups(outputDir, prefix string, maxBackups int) ([]string, error) {
+	if maxBackups <= 0 {
+		return nil, nil
+	}
+
+	manifests, err := findManifests(outputDir, prefix)
+	if err != nil {
+		return nil, err
+	}
+	sort.Strings(manifests)
+
+	if len(manifests) <= maxBackups {
+		return nil, nil
+	}
+
+	toDelete := manifests[:len(manifests)-maxBackups]
+	var pruned []string
+	for _, manifestPath := range toDelete {
+		m, err := readManifest(manifestPath)
+		if err != nil {
+			// A corrupt manifest means we cannot know which bundle to delete.
+			// Leave both files alone and move on.
+			fmt.Fprintf(os.Stderr, "warning: skipping %s: %v\n", manifestPath, err)
+			continue
+		}
+		if m.BundleFile != "" {
+			bundlePath := filepath.Join(outputDir, m.BundleFile)
+			if err := os.Remove(bundlePath); err != nil && !os.IsNotExist(err) {
+				return pruned, fmt.Errorf("remove %s: %w", bundlePath, err)
+			}
+			pruned = append(pruned, bundlePath)
+		}
+		if err := os.Remove(manifestPath); err != nil && !os.IsNotExist(err) {
+			return pruned, fmt.Errorf("remove %s: %w", manifestPath, err)
+		}
+	}
+	return pruned, nil
+}
+
+// findManifests returns full paths of manifest files in outputDir whose names
+// begin with "<prefix>-" and end with ManifestSuffix. Uses ReadDir rather than
+// filepath.Glob so a prefix containing '*' or '[' is treated literally.
+func findManifests(outputDir, prefix string) ([]string, error) {
+	entries, err := os.ReadDir(outputDir)
+	if err != nil {
+		return nil, err
+	}
+	filePrefix := prefix + "-"
+	var matches []string
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
+		name := e.Name()
+		if strings.HasPrefix(name, filePrefix) && strings.HasSuffix(name, ManifestSuffix) {
+			matches = append(matches, filepath.Join(outputDir, name))
+		}
+	}
+	return matches, nil
+}
+
+func readManifest(path string) (*Manifest, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	var m Manifest
+	if err := json.Unmarshal(data, &m); err != nil {
+		return nil, err
+	}
+	return &m, nil
+}
+
+// VerifyBundle verifies a bundle file and returns the refs it contains
 func VerifyBundle(bundlePath string) ([]Ref, error) {
 	if _, err := gitops.Run("", "bundle", "verify", bundlePath); err != nil {
 		return nil, err
@@ -162,7 +239,7 @@ func VerifyBundle(bundlePath string) ([]Ref, error) {
 	return parseRefs(out), nil
 }
 
-// Restore clones from a bundle into destPath.
+// Restore clones from a bundle into destPath
 func Restore(bundlePath, destPath string, bare bool) error {
 	args := []string{"clone"}
 	if bare {

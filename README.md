@@ -1,3 +1,4 @@
+```markdown
 # gitlulz-local
 
 A simple and small CLI that makes **hosting a local Git remote** and **backing it up safely** easy. It has no runtime dependencies beyond `git` itself: every command shells out to `git`.
@@ -73,6 +74,34 @@ Bundles are read-only archives; use `gitlulz-local verify <bundle>` to check one
 
 Each bundle is verified with `git bundle verify` before it is renamed into place, and the manifest is written atomically after the bundle, so readers never see a half-written backup.
 
+## Configuration
+
+`backup` reads an optional YAML config file from:
+
+- `$XDG_CONFIG_HOME/gitlulz-local/config.yaml` (when `XDG_CONFIG_HOME` is set), or
+- `~/.config/gitlulz-local/config.yaml`
+
+On first run, the tool writes a default `config.yaml` to that location. Delete the file to reset to defaults; the next command recreates it. `--help` and bare `gitlulz-local` (no subcommand) do not create it, so the file appears the first time you actually run a command.
+
+On Termux the file lives at the same path relative to `$HOME`, because the tool prefers `$HOME` over `os.UserHomeDir()` (which can return `/` on Android). A missing file means defaults apply.
+
+```yaml
+# Keep at most 3 backups per remote+prefix combination.
+# 0 means unlimited (pruning disabled). Default is 3.
+max_backups: 3
+```
+
+Pruning runs **after** each successful backup, never before: if `git bundle create` or `git bundle verify` fails, no old backups are touched. Files considered for pruning are those matching `<prefix>-*.manifest.json` in the backup's output directory, so backups of different remotes, or of the same remote into different `-o` directories, are pruned independently. Empty-repo backups (manifest only, no bundle) are counted the same as full backups.
+
+Override the config for a single run:
+
+```bash
+gitlulz-local backup /GitRemotes/my-project.git --max-backups 0    # unlimited
+gitlulz-local backup /GitRemotes/my-project.git --max-backups 10   # keep 10
+```
+
+A malformed config file is a hard error: the run stops before creating a backup, so a typo in `config.yaml` never silently falls back to the default of 3.
+
 ## Testing
 
 End-to-end smoke tests run in a temporary directory and clean up on exit:
@@ -86,15 +115,15 @@ test-on-windows.bat
 
 Each script checks that every command it invokes is present **before** building or running anything, and reports all missing ones at once with a platform-appropriate install hint (`pacman`/`apt`/`dnf`/`zypper`/`apk` on Linux, `brew`/`port` on macOS, `pkg install` on Termux, and `bash.exe`/`git.exe`/`go.exe` lookups on Windows). So a bare machine fails with a single readable message instead of a half-finished run.
 
-Set `KEEP=1` to keep the temp directory for inspection. On Windows the `.bat` locates `bash.exe` from your Git for Windows install and runs the shared suite; `test-on-linux.sh` and `test-on-mac.sh` are otherwise identical apart from the install hints in the pre-check.
+Set `KEEP=1` to keep the temp directory for inspection. On Windows the `.bat` locates `bash.exe` from your Git for Windows install and runs the shared suite; `test-on-linux.sh` and `test-on-mac.sh` are otherwise identical apart from the install hints in the pre-check. Each script also isolates `HOME` and `XDG_CONFIG_HOME` inside the temp directory, so the config-pruning test exercises a throwaway `config.yaml` and never touches your real one.
 
 ## Releases
 
 Pushing a `v*` tag triggers `.github/workflows/release.yml`, which builds the cross binaries plus the Arch packages for `x86_64` and `aarch64`, and attaches everything to a GitHub Release:
 
 ```bash
-git tag v1.0.0
-git push origin v1.0.0
+git tag v1.2.0
+git push origin v1.2.0
 ```
 
 Keep `VERSION` and the tag in sync; asset filenames come from `VERSION`. Local build artifacts can be removed with `./clean.sh`.

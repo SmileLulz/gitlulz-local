@@ -61,7 +61,8 @@ cleanup() {
 trap cleanup EXIT
 
 export HOME="$ROOT/home"
-mkdir -p "$HOME"
+export XDG_CONFIG_HOME="$ROOT/xdg"
+mkdir -p "$HOME" "$XDG_CONFIG_HOME"
 export GIT_CONFIG_NOSYSTEM=1
 export GIT_AUTHOR_NAME="gitlulz-test"
 export GIT_AUTHOR_EMAIL="test@example.invalid"
@@ -261,6 +262,51 @@ test_backup_custom_output_and_prefix() {
     esac
 }
 
+test_config_auto_create() {
+    local xdg="$ROOT/xdg-autocreate"
+    rm -rf "$xdg"
+    mkdir -p "$xdg"
+
+    XDG_CONFIG_HOME="$xdg" "$BIN" version >/dev/null 2>&1 \
+        || { not_ok "config auto-create: version runs"; return; }
+
+    local cfg="$xdg/gitlulz-local/config.yaml"
+    if [ -f "$cfg" ]; then
+        ok "config auto-create: file written"
+    else
+        not_ok "config auto-create: file written" "missing: $cfg"
+        return
+    fi
+
+    if grep -q 'max_backups: 3' "$cfg"; then
+        ok "config auto-create: default max_backups"
+    else
+        not_ok "config auto-create: default max_backups"
+    fi
+}
+
+test_config_max_backups() {
+    local remote="$ROOT/pruneme.git"
+    local work="$ROOT/pruneme-work"
+    local xdg="$ROOT/xdg-prune"
+    mkdir -p "$xdg/gitlulz-local"
+    printf 'max_backups: 2\n' > "$xdg/gitlulz-local/config.yaml"
+
+    "$BIN" init "$remote" >/dev/null 2>&1 || { not_ok "prune init"; return; }
+    seed_repo "$work" "$remote"              || { not_ok "prune seed"; return; }
+
+    local bdir="$ROOT/pruneme.backups"
+    local i
+    for i in 1 2 3; do
+        [ "$i" -gt 1 ] && sleep 1
+        XDG_CONFIG_HOME="$xdg" "$BIN" backup "$remote" >/dev/null 2>&1 \
+            || { not_ok "prune backup $i"; return; }
+    done
+
+    local manifests=( "$bdir"/*.manifest.json )
+    assert_eq "prune keeps only max_backups manifests" "${#manifests[@]}" "2"
+}
+
 test_end_to_end() {
     local remote="$ROOT/e2e-remote.git"
     local work="$ROOT/e2e-work"
@@ -324,6 +370,8 @@ run_test "info: --json"                test_info_json
 run_test "backup: empty"               test_backup_empty_writes_manifest_only
 run_test "backup: trims .git"          test_backup_trims_dot_git
 run_test "backup: -o and --prefix"     test_backup_custom_output_and_prefix
+run_test "config: auto-create"         test_config_auto_create
+run_test "backup: max_backups"         test_config_max_backups
 run_test "end-to-end"                  test_end_to_end
 set -e
 

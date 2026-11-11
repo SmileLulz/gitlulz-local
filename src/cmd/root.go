@@ -4,11 +4,11 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/SmileLulz/gitlulz-local/src/config"
 	"github.com/spf13/cobra"
 )
 
-// Version is set by main before Execute is called
-var Version = "0.1.0-dev"
+var Version = "dev"
 
 var rootCmd = &cobra.Command{
 	Use:   "gitlulz-local",
@@ -17,6 +17,11 @@ var rootCmd = &cobra.Command{
 as verified portable bundles that can be cloned back at any time.`,
 	SilenceUsage:  true,
 	SilenceErrors: true,
+	PersistentPreRun: func(cmd *cobra.Command, args []string) {
+		if _, err := config.Ensure(); err != nil {
+			fmt.Fprintf(os.Stderr, "warning: could not prepare config file: %v\n", err)
+		}
+	},
 }
 
 func init() {
@@ -31,7 +36,6 @@ func init() {
 	)
 }
 
-// Execute runs the root command and reports errors to stderr
 func Execute() error {
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, "error:", err)
